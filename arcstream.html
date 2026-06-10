@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ArcStream — USDC Payment Suite on Arc</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #03080f;
+      --surface: #080f1a;
+      --surface2: #0d1623;
+      --border: rgba(255,255,255,0.06);
+      --accent: #00c2ff;
+      --accent2: #00ff94;
+      --accent3: #7b61ff;
+      --text: #f0f0f0;
+      --muted: rgba(255,255,255,0.35);
+      --error: #ff4f7b;
+      --success: #00ff94;
+    }
+    html, body { min-height: 100vh; background: var(--bg); color: var(--text); font-family: 'Space Mono', monospace; }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse at 15% 25%, rgba(0,194,255,0.06) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 75%, rgba(0,255,148,0.04) 0%, transparent 55%),
+        radial-gradient(ellipse at 50% 50%, rgba(123,97,255,0.03) 0%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: rgba(3,8,15,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px;
+    }
+
+    .nav-brand { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+    .nav-icon {
+      width: 34px; height: 34px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.85rem; color: #000;
+    }
+    .nav-name { font-family: 'Syne', sans-serif; font-size: 1.1rem; font-weight: 800; }
+    .nav-name span { color: var(--accent); }
+
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+    .nav-link {
+      font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 7px 14px; border-radius: 6px; cursor: pointer;
+      color: var(--muted); transition: all 0.15s; border: none; background: transparent;
+      font-family: 'Space Mono', monospace;
+    }
+    .nav-link:hover { color: var(--text); }
+    .nav-link.active { background: var(--surface2); color: var(--accent); }
+
+    .nav-right { display: flex; align-items: center; gap: 10px; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 0.55rem; letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 4px 10px;
+    }
+    .badge-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent2); animation: blink 2s infinite; }
+    @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.2} }
+
+    .btn-connect-nav {
+      font-family: 'Space Mono', monospace; font-size: 0.6rem; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 8px 16px; border-radius: 7px; border: none;
+      background: linear-gradient(135deg, var(--accent), #0080ff); color: #000;
+      font-weight: 700; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-connect-nav:hover { transform: translateY(-1px); }
+    .btn-connect-nav.connected { background: rgba(0,255,148,0.1); color: var(--accent2); border: 1px solid rgba(0,255,148,0.2); }
+
+    .btn-disconnect-nav {
+      font-family: 'Space Mono', monospace; font-size: 0.6rem; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 8px 12px; border-radius: 7px;
+      border: 1px solid rgba(255,79,123,0.25); background: rgba(255,79,123,0.08);
+      color: var(--error); font-weight: 700; cursor: pointer; transition: all 0.2s;
+      display: none;
+    }
+    .btn-disconnect-nav:hover { background: rgba(255,79,123,0.16); border-color: rgba(255,79,123,0.4); }
+
+    /* ── PAGES ── */
+    .page { display: none; min-height: 100vh; padding: 80px 24px 48px; position: relative; z-index: 1; }
+    .page.active { display: block; }
+    .inner { max-width: 960px; margin: 0 auto; }
+
+    /* ── HOME PAGE ── */
+    .hero { text-align: center; padding: 60px 0 80px; }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 0.62rem; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--accent); border: 1px solid rgba(0,194,255,0.2);
+      border-radius: 999px; padding: 6px 16px; margin-bottom: 28px;
+    }
+    .hero h1 {
+      font-family: 'Syne', sans-serif; font-size: clamp(2.4rem, 7vw, 4.5rem);
+      font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; margin-bottom: 20px;
+    }
+    .hero h1 .grad {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .hero p { font-size: 0.85rem; color: var(--muted); max-width: 480px; margin: 0 auto 36px; line-height: 1.8; }
+
+    .hero-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-hero-primary {
+      font-family: 'Space Mono', monospace; font-size: 0.72rem; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 14px 28px; border-radius: 10px; border: none;
+      background: linear-gradient(135deg, var(--accent), #0080ff); color: #000;
+      font-weight: 700; cursor: pointer; transition: all 0.2s;
+      box-shadow: 0 4px 24px rgba(0,194,255,0.25);
+    }
+    .btn-hero-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,194,255,0.35); }
+    .btn-hero-secondary {
+      font-family: 'Space Mono', monospace; font-size: 0.72rem; letter-spacing: 0.1em;
+      text-transform: uppercase; padding: 14px 28px; border-radius: 10px;
+      border: 1px solid var(--border); background: transparent; color: var(--muted);
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-hero-secondary:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+    .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 60px; }
+    .feature-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      padding: 28px 24px;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: rgba(0,194,255,0.2); }
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 10px; margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+    }
+    .feature-icon.blue { background: rgba(0,194,255,0.1); }
+    .feature-icon.green { background: rgba(0,255,148,0.1); }
+    .feature-icon.purple { background: rgba(123,97,255,0.1); }
+    .feature-title { font-family: 'Syne', sans-serif; font-size: 0.95rem; font-weight: 700; margin-bottom: 8px; }
+    .feature-desc { font-size: 0.65rem; color: var(--muted); line-height: 1.7; }
+
+    .stats-home { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 60px; }
+    .stat-home {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 24px; text-align: center;
+    }
+    .stat-home-val { font-family: 'Syne', sans-serif; font-size: 1.8rem; font-weight: 800; color: var(--accent); margin-bottom: 4px; }
+    .stat-home-label { font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+    .contract-info {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      padding: 28px; margin-bottom: 20px;
+    }
+    .contract-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.62rem; }
+    .contract-row:last-child { border-bottom: none; }
+    .contract-key { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .contract-val a { color: var(--accent); text-decoration: none; }
+
+    /* ── SHARED FORM STYLES ── */
+    .page-header { margin-bottom: 32px; }
+    .page-title { font-family: 'Syne', sans-serif; font-size: clamp(1.6rem, 4vw, 2.2rem); font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; }
+    .page-subtitle { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.08em; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; margin-bottom: 16px; }
+    .card-title { font-family: 'Syne', sans-serif; font-size: 0.9rem; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+    .card-title::before { content: ''; width: 3px; height: 16px; background: var(--accent); border-radius: 2px; }
+
+    .form-group { margin-bottom: 14px; }
+    .form-label { font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; display: block; }
+    input, textarea, select {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; font-family: 'Space Mono', monospace;
+      font-size: 0.72rem; color: var(--text); outline: none; transition: border-color 0.15s;
+    }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+    input::placeholder, textarea::placeholder { color: var(--muted); }
+    textarea { resize: vertical; min-height: 80px; }
+    select option { background: var(--surface2); }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .layout-split { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+    .btn { font-family: 'Space Mono', monospace; font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 12px 20px; border-radius: 8px; border: none; cursor: pointer; transition: all 0.2s; width: 100%; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), #0080ff); color: #000; font-weight: 700; }
+    .btn-primary:hover { transform: translateY(-1px); }
+    .btn-primary:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+    .btn-success { background: linear-gradient(135deg, var(--accent2), #00cc77); color: #000; font-weight: 700; }
+    .btn-success:hover { transform: translateY(-1px); }
+    .btn-success:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+    .btn-outline { background: transparent; color: var(--accent); border: 1px solid rgba(0,194,255,0.3); }
+    .btn-outline:hover { background: rgba(0,194,255,0.08); }
+    .btn-group { display: flex; gap: 10px; }
+    .btn-group .btn { flex: 1; }
+
+    .status { font-size: 0.65rem; color: var(--muted); min-height: 20px; margin: 10px 0; text-align: center; }
+    .status.ok { color: var(--success); }
+    .status.err { color: var(--error); }
+    .status.loading { color: var(--accent); }
+
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .stat-val { font-family: 'Syne', sans-serif; font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+    .stat-label { font-size: 0.58rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+
+    .tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
+    .tab { flex: 1; font-family: 'Space Mono', monospace; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; padding: 10px; border: none; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; transition: all 0.15s; text-align: center; }
+    .tab.active { background: var(--surface2); color: var(--accent); }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    .earned-display { background: linear-gradient(135deg, rgba(0,255,148,0.08), rgba(0,194,255,0.05)); border: 1px solid rgba(0,255,148,0.15); border-radius: 14px; padding: 28px; text-align: center; margin-bottom: 20px; }
+    .earned-amount { font-family: 'Syne', sans-serif; font-size: 2.4rem; font-weight: 800; background: linear-gradient(135deg, var(--accent2), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 4px; }
+    .earned-label { font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+    .stream-bar-wrap { height: 3px; background: var(--border); border-radius: 999px; margin-top: 8px; overflow: hidden; }
+    .stream-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 999px; animation: stream 2s linear infinite; width: 30%; }
+    @keyframes stream { 0%{transform:translateX(-100%)}100%{transform:translateX(400%)} }
+
+    .employee-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 10px; }
+    .employee-addr { font-size: 0.65rem; color: var(--accent); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .employee-earned { font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 700; color: var(--accent2); }
+    .employee-rate { font-size: 0.58rem; color: var(--muted); margin-top: 2px; }
+
+    .tx-log { margin-top: 16px; max-height: 100px; overflow-y: auto; }
+    .tx-item { font-size: 0.58rem; color: var(--muted); padding: 4px 0; display: flex; justify-content: space-between; border-bottom: 1px solid var(--border); }
+    .tx-item a { color: var(--accent); text-decoration: none; }
+
+    /* Invoice preview */
+    .invoice-preview { background: #fff; border-radius: 16px; padding: 28px; color: #111; font-family: 'Space Mono', monospace; position: sticky; top: 80px; }
+    .inv-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .inv-logo { font-family: 'Syne', sans-serif; font-size: 1.2rem; font-weight: 800; color: #000; }
+    .inv-logo span { color: #00a8dd; }
+    .inv-number .num { font-family: 'Syne', sans-serif; font-size: 1rem; font-weight: 800; color: #000; text-align: right; }
+    .inv-number .date { font-size: 0.58rem; color: #999; margin-top: 2px; letter-spacing: 0.08em; text-align: right; }
+    .inv-badge { display: inline-flex; align-items: center; gap: 5px; background: #f0fff8; border: 1px solid #00cc77; border-radius: 999px; padding: 3px 10px; font-size: 0.52rem; letter-spacing: 0.1em; text-transform: uppercase; color: #00aa55; margin-bottom: 20px; }
+    .inv-badge::before { content: '●'; font-size: 0.45rem; }
+    .inv-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .inv-party-label { font-size: 0.52rem; letter-spacing: 0.12em; text-transform: uppercase; color: #999; margin-bottom: 4px; }
+    .inv-party-name { font-size: 0.75rem; font-weight: 700; color: #000; margin-bottom: 2px; }
+    .inv-party-addr { font-size: 0.52rem; color: #666; word-break: break-all; }
+    .inv-divider { height: 1px; background: #eee; margin: 14px 0; }
+    .inv-item-header { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; padding: 6px 0; border-bottom: 1px solid #eee; margin-bottom: 6px; }
+    .inv-item-header span { font-size: 0.52rem; letter-spacing: 0.1em; text-transform: uppercase; color: #999; }
+    .inv-item { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; padding: 6px 0; }
+    .inv-item span { font-size: 0.65rem; color: #333; }
+    .inv-item .amount { font-weight: 700; color: #000; }
+    .inv-total { display: flex; justify-content: flex-end; margin-top: 12px; }
+    .inv-total-box { background: #f8f8f8; border-radius: 10px; padding: 12px 18px; min-width: 160px; }
+    .inv-total-label { font-size: 0.55rem; letter-spacing: 0.1em; text-transform: uppercase; color: #999; margin-bottom: 4px; }
+    .inv-total-amount { font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 800; color: #000; }
+    .inv-total-currency { font-size: 0.6rem; color: #00a8dd; font-weight: 700; }
+    .inv-footer { margin-top: 20px; padding-top: 14px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+    .inv-footer-note { font-size: 0.52rem; color: #bbb; }
+    .inv-chain { font-size: 0.52rem; color: #00a8dd; letter-spacing: 0.08em; }
+
+    .payment-link-box { background: var(--surface2); border: 1px solid rgba(0,255,148,0.2); border-radius: 10px; padding: 14px; margin-top: 16px; display: none; }
+    .payment-link-label { font-size: 0.58rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent2); margin-bottom: 8px; }
+    .payment-link-url { font-size: 0.58rem; color: var(--muted); word-break: break-all; background: var(--bg); padding: 10px; border-radius: 6px; margin-bottom: 10px; line-height: 1.6; }
+
+    /* Pay view */
+    .pay-view { display: none; }
+    .pay-card { max-width: 520px; margin: 40px auto; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 36px; text-align: center; }
+    .pay-amount { font-family: 'Syne', sans-serif; font-size: 3rem; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 4px; }
+    .pay-currency { font-size: 0.68rem; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 24px; }
+    .pay-details { text-align: left; margin-bottom: 24px; }
+    .pay-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 0.62rem; }
+    .pay-row:last-child { border-bottom: none; }
+    .pay-key { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .pay-val { color: var(--text); max-width: 220px; text-align: right; word-break: break-all; }
+
+    .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid rgba(0,194,255,0.2); border-top-color: var(--accent); border-radius: 50%; animation: rotate 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes rotate { to { transform: rotate(360deg); } }
+
+    /* ── TX TOAST ── */
+    #tx-toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
+      z-index: 9999; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; gap: 12px;
+      font-size: 0.65rem; min-width: 280px; max-width: 90vw;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s;
+      opacity: 0; pointer-events: none;
+    }
+    #tx-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+    #tx-toast.pending { border-color: rgba(0,194,255,0.25); }
+    #tx-toast.success { border-color: rgba(0,255,148,0.3); }
+    #tx-toast.fail    { border-color: rgba(255,79,123,0.3); }
+    .toast-icon { font-size: 1rem; flex-shrink: 0; }
+    .toast-body { flex: 1; }
+    .toast-title { font-weight: 700; margin-bottom: 2px; }
+    .toast-title.pending { color: var(--accent); }
+    .toast-title.success { color: var(--accent2); }
+    .toast-title.fail    { color: var(--error); }
+    .toast-sub { color: var(--muted); font-size: 0.58rem; }
+    .toast-link { color: var(--accent); text-decoration: none; display: inline-block; margin-top: 3px; font-size: 0.58rem; }
+    .toast-link:hover { text-decoration: underline; }
+    .toast-close { color: var(--muted); cursor: pointer; font-size: 1rem; padding: 2px 4px; flex-shrink: 0; line-height: 1; }
+    .toast-close:hover { color: var(--text); }
+
+    @media(max-width:700px) {
+      .features-grid, .stats-home, .stats-row { grid-template-columns: 1fr; }
+      .layout-split { grid-template-columns: 1fr; }
+      .two-col { grid-template-columns: 1fr; }
+      .invoice-preview { position: static; }
+      .btn-group { flex-direction: column; }
+      .inv-parties { grid-template-columns: 1fr; }
+      nav { padding: 0 14px; }
+      .nav-links { display: none; }
+      .badge { display: none; }
+      .nav-right { gap: 6px; }
+      .btn-connect-nav, .btn-disconnect-nav { font-size: 0.55rem; padding: 7px 10px; }
+      .page { padding: 72px 16px 48px; }
+      .hero { padding: 40px 0 60px; }
+      .pay-card { padding: 24px 18px; }
+      .earned-amount { font-size: 1.9rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- TX TOAST -->
+<div id="tx-toast">
+  <div class="toast-icon" id="toast-icon">⏳</div>
+  <div class="toast-body">
+    <div class="toast-title" id="toast-title">Transaction pending</div>
+    <div class="toast-sub" id="toast-sub">Waiting for confirmation...</div>
+    <a class="toast-link" id="toast-link" target="_blank" style="display:none"></a>
+  </div>
+  <span class="toast-close" onclick="hideToast()">✕</span>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand" onclick="showPage('home')">
+    <div class="nav-icon">AS</div>
+    <div class="nav-name">Arc<span>Stream</span></div>
+  </div>
+  <div class="nav-links">
+    <button class="nav-link active" onclick="showPage('home')">Home</button>
+    <button class="nav-link" onclick="showPage('payroll')">Payroll</button>
+    <button class="nav-link" onclick="showPage('invoice')">Invoice</button>
+  </div>
+  <div class="nav-right">
+    <div class="badge"><div class="badge-dot"></div>Arc Testnet</div>
+    <button class="btn-connect-nav" id="btn-connect-nav">Connect</button>
+    <button class="btn-disconnect-nav" id="btn-disconnect-nav">✕ Disconnect</button>
+  </div>
+</nav>
+
+<!-- ══════════════════════════════════════════
+     HOME PAGE
+══════════════════════════════════════════ -->
+<div class="page active" id="page-home">
+  <div class="inner">
+    <div class="hero">
+      <div class="hero-eyebrow">⚡ Built on Arc · Powered by USDC</div>
+      <h1>The USDC <span class="grad">Payment Suite</span><br/>for Arc Builders</h1>
+      <p>Stream salaries second by second. Generate on-chain invoices. All powered by USDC on Arc Testnet. No ETH. No wrapping. Just USDC.</p>
+      <div class="hero-btns">
+        <button class="btn-hero-primary" onclick="showPage('payroll')">Start Payroll →</button>
+        <button class="btn-hero-secondary" onclick="showPage('invoice')">Create Invoice</button>
+      </div>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon blue">💸</div>
+        <div class="feature-title">Streaming Payroll</div>
+        <div class="feature-desc">Deposit USDC, add employees with monthly salaries. Earnings stream second by second. Withdraw anytime.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon green">🧾</div>
+        <div class="feature-title">USDC Invoicing</div>
+        <div class="feature-desc">Generate professional invoices with shareable payment links. Clients pay directly in USDC on Arc.</div>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon purple">⛓️</div>
+        <div class="feature-title">100% On-Chain</div>
+        <div class="feature-desc">Every payment verified on Arc Testnet. No middlemen, no banks. USDC is Arc's native gas token.</div>
+      </div>
+    </div>
+
+    <div class="stats-home">
+      <div class="stat-home">
+        <div class="stat-home-val" id="home-balance">—</div>
+        <div class="stat-home-label">Payroll USDC Locked</div>
+      </div>
+      <div class="stat-home">
+        <div class="stat-home-val" id="home-employees">—</div>
+        <div class="stat-home-label">Active Streams</div>
+      </div>
+      <div class="stat-home">
+        <div class="stat-home-val">5042002</div>
+        <div class="stat-home-label">Arc Testnet Chain ID</div>
+      </div>
+    </div>
+
+    <div class="contract-info">
+      <div class="card-title">Contract Addresses</div>
+      <div class="contract-row">
+        <span class="contract-key">Payroll Contract</span>
+        <span class="contract-val"><a href="https://testnet.arcscan.app/address/0x6BD983a78F92df153a80F137D0Cf85F221DD90aD" target="_blank">0x6BD9...90aD ↗</a></span>
+      </div>
+      <div class="contract-row">
+        <span class="contract-key">USDC Token</span>
+        <span class="contract-val"><a href="https://testnet.arcscan.app/address/0x3600000000000000000000000000000000000000" target="_blank">0x3600...0000 ↗</a></span>
+      </div>
+      <div class="contract-row">
+        <span class="contract-key">Network</span>
+        <span class="contract-val">Arc Testnet · Chain 5042002</span>
+      </div>
+      <div class="contract-row">
+        <span class="contract-key">Explorer</span>
+        <span class="contract-val"><a href="https://testnet.arcscan.app" target="_blank">testnet.arcscan.app ↗</a></span>
+      </div>
+      <div class="contract-row">
+        <span class="contract-key">Built by</span>
+        <span class="contract-val"><a href="https://github.com/bigvishh" target="_blank">@bigvishh ↗</a></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PAYROLL PAGE
+══════════════════════════════════════════ -->
+<div class="page" id="page-payroll">
+  <div class="inner">
+    <div class="page-header">
+      <div class="page-title">USDC Streaming Payroll</div>
+      <div class="page-subtitle">Deposit USDC · Add employees · Earnings stream per second</div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-val" id="p-balance">—</div><div class="stat-label">Contract Balance</div></div>
+      <div class="stat-card"><div class="stat-val" id="p-employees">—</div><div class="stat-label">Active Employees</div></div>
+      <div class="stat-card"><div class="stat-val" id="p-wallet">—</div><div class="stat-label">Your USDC</div></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" data-ptab="employer">Employer</button>
+      <button class="tab" data-ptab="employee">Employee</button>
+      <button class="tab" data-ptab="streams">Live Streams</button>
+    </div>
+
+    <div class="panel active" id="ptab-employer">
+      <div class="card">
+        <div class="card-title">Deposit USDC</div>
+        <div class="form-group"><label class="form-label">Amount (USDC)</label><input type="number" id="deposit-amount" placeholder="e.g. 1000" /></div>
+        <div class="status" id="status-deposit"></div>
+        <button class="btn btn-primary" id="btn-deposit" disabled>Deposit USDC</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Add Employee</div>
+        <div class="form-group"><label class="form-label">Wallet Address</label><input type="text" id="emp-address" placeholder="0x..." /></div>
+        <div class="form-group"><label class="form-label">Monthly Salary (USDC)</label><input type="number" id="emp-salary" placeholder="e.g. 100" /></div>
+        <div class="status" id="status-add"></div>
+        <button class="btn btn-primary" id="btn-add-emp" disabled>Add Employee</button>
+      </div>
+    </div>
+
+    <div class="panel" id="ptab-employee">
+      <div class="card">
+        <div class="card-title">Your Earnings</div>
+        <div class="earned-display">
+          <div class="earned-amount" id="earned-amount">0.000000</div>
+          <div class="earned-label">USDC Earned · Updating live</div>
+          <div class="stream-bar-wrap" style="margin-top:16px;width:60%;margin-left:auto;margin-right:auto;"><div class="stream-bar"></div></div>
+        </div>
+        <div class="status" id="status-withdraw"></div>
+        <button class="btn btn-success" id="btn-withdraw" disabled>Withdraw Earnings</button>
+        <div class="tx-log" id="tx-log-withdraw"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="ptab-streams">
+      <div class="card">
+        <div class="card-title">Active Employee Streams</div>
+        <div id="employee-list"><div style="text-align:center;color:var(--muted);font-size:0.68rem;padding:24px 0;">Connect wallet to view streams</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     INVOICE PAGE
+══════════════════════════════════════════ -->
+<div class="page" id="page-invoice">
+  <div class="inner">
+
+    <!-- Pay view -->
+    <div class="pay-view" id="pay-view">
+      <div class="pay-card">
+        <div style="font-size:0.62rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:16px">Payment Request · ArcStream</div>
+        <div class="pay-amount" id="pay-amount">0</div>
+        <div class="pay-currency">USDC · Arc Testnet</div>
+        <div class="pay-details" id="pay-details"></div>
+        <div class="status" id="pay-status">Connect wallet to pay</div>
+        <button class="btn btn-primary" id="btn-pay-connect" style="margin-bottom:10px">Connect & Pay with USDC</button>
+        <button class="btn btn-outline" onclick="clearPayParam()">Create Your Own Invoice</button>
+      </div>
+    </div>
+
+    <!-- Create view -->
+    <div id="create-view">
+      <div class="page-header">
+        <div class="page-title">USDC Invoice</div>
+        <div class="page-subtitle">Create · Share · Get paid in USDC on Arc</div>
+      </div>
+
+      <div class="layout-split">
+        <div>
+          <div class="card">
+            <div class="card-title">Your Details</div>
+            <div class="form-group"><label class="form-label">Your Name / Company</label><input type="text" id="from-name" placeholder="e.g. bigvishh" /></div>
+            <div class="form-group"><label class="form-label">Your Wallet (receives payment)</label><input type="text" id="from-wallet" placeholder="0x..." /></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Bill To</div>
+            <div class="form-group"><label class="form-label">Client Name</label><input type="text" id="to-name" placeholder="e.g. Acme Corp" /></div>
+            <div class="form-group"><label class="form-label">Client Wallet</label><input type="text" id="to-wallet" placeholder="0x..." /></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Invoice Details</div>
+            <div class="two-col">
+              <div class="form-group"><label class="form-label">Invoice #</label><input type="text" id="inv-number" placeholder="INV-001" /></div>
+              <div class="form-group"><label class="form-label">Due Date</label><input type="date" id="inv-due" /></div>
+            </div>
+            <div class="form-group"><label class="form-label">Description</label><input type="text" id="inv-desc" placeholder="e.g. Smart contract development" /></div>
+            <div class="form-group"><label class="form-label">Amount (USDC)</label><input type="number" id="inv-amount" placeholder="e.g. 500" /></div>
+            <div class="form-group"><label class="form-label">Notes (optional)</label><textarea id="inv-notes" placeholder="Payment terms..."></textarea></div>
+          </div>
+          <div class="status" id="status-gen"></div>
+          <div class="btn-group">
+            <button class="btn btn-outline" id="btn-preview">Preview</button>
+            <button class="btn btn-primary" id="btn-generate">Generate Link</button>
+          </div>
+          <div class="payment-link-box" id="payment-link-box">
+            <div class="payment-link-label">✓ Payment Link Ready</div>
+            <div class="payment-link-url" id="payment-link-url"></div>
+            <div class="btn-group">
+              <button class="btn btn-success" id="btn-copy">Copy Link</button>
+              <button class="btn btn-outline" id="btn-share">Share</button>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="invoice-preview">
+            <div class="inv-header">
+              <div class="inv-logo">Arc<span>Stream</span></div>
+              <div class="inv-number"><div class="num" id="prev-number">INV-001</div><div class="date" id="prev-date">Due: —</div></div>
+            </div>
+            <div class="inv-badge">USDC · Arc Testnet</div>
+            <div class="inv-parties">
+              <div><div class="inv-party-label">From</div><div class="inv-party-name" id="prev-from-name">Your Name</div><div class="inv-party-addr" id="prev-from-wallet">0x...</div></div>
+              <div><div class="inv-party-label">Bill To</div><div class="inv-party-name" id="prev-to-name">Client</div><div class="inv-party-addr" id="prev-to-wallet">0x...</div></div>
+            </div>
+            <div class="inv-divider"></div>
+            <div class="inv-item-header"><span>Description</span><span>Qty</span><span>Amount</span></div>
+            <div class="inv-item"><span id="prev-desc">Service</span><span>1</span><span class="amount" id="prev-amount-item">0 USDC</span></div>
+            <div class="inv-divider"></div>
+            <div class="inv-total"><div class="inv-total-box"><div class="inv-total-label">Total Due</div><div class="inv-total-amount" id="prev-total">0</div><div class="inv-total-currency">USDC · Arc Testnet</div></div></div>
+            <div id="prev-notes" style="margin-top:14px;font-size:0.58rem;color:#888;display:none;"></div>
+            <div class="inv-footer"><div class="inv-footer-note">Powered by ArcStream</div><div class="inv-chain">Arc Testnet · 5042002</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants ──
+const PAYROLL_ADDRESS = '0x6BD983a78F92df153a80F137D0Cf85F221DD90aD';
+const USDC_ADDRESS    = '0x3600000000000000000000000000000000000000';
+const RPC_URL         = 'https://rpc.testnet.arc.network';
+const EXPLORER        = 'https://testnet.arcscan.app';
+const CHAIN_ID        = '0x4CDCD2';
+
+const PAYROLL_ABI = [
+  "function deposit(uint256 amount) external",
+  "function addEmployee(address wallet, uint256 monthlyUsdc) external",
+  "function earned(address wallet) view returns (uint256)",
+  "function withdraw() external",
+  "function contractBalance() view returns (uint256)",
+  "function getEmployeeCount() view returns (uint256)",
+  "function employees(address) view returns (uint256 ratePerSecond, uint256 lastWithdrawn, bool active)",
+  "function employeeList(uint256) view returns (address)"
+];
+const USDC_ABI = [
+  "function balanceOf(address) view returns (uint256)",
+  "function approve(address spender, uint256 amount) external returns (bool)",
+  "function transfer(address to, uint256 amount) external returns (bool)"
+];
+
+const $ = id => document.getElementById(id);
+let provider, signer, payrollContract, usdcContract, userAddress;
+let earnedInterval;
+
+// ── Navigation ──
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  $('page-' + page).classList.add('active');
+  document.querySelectorAll('.nav-link').forEach(l => { if (l.textContent.toLowerCase().includes(page)) l.classList.add('active'); });
+  if (page === 'home') document.querySelectorAll('.nav-link')[0].classList.add('active');
+  if (page === 'payroll') readPayrollStats(userAddress);
+  if (page === 'invoice') checkPayParam();
+}
+
+// ── Toast ──
+let toastTimer;
+function showToast(state, title, sub, txHash) {
+  const toast = $('tx-toast');
+  toast.className = 'show ' + state;
+  $('toast-icon').textContent = state === 'pending' ? '⏳' : state === 'success' ? '✅' : '❌';
+  $('toast-title').textContent = title;
+  $('toast-title').className = 'toast-title ' + state;
+  $('toast-sub').textContent = sub;
+  const lnk = $('toast-link');
+  if (txHash) {
+    lnk.href = EXPLORER + '/tx/' + txHash;
+    lnk.textContent = txHash.slice(0,10) + '...↗ View on Explorer';
+    lnk.style.display = 'block';
+  } else { lnk.style.display = 'none'; }
+  clearTimeout(toastTimer);
+  if (state !== 'pending') toastTimer = setTimeout(hideToast, 6000);
+}
+function hideToast() {
+  $('tx-toast').classList.remove('show');
+}
+
+// ── Disconnect ──
+function disconnectWallet() {
+  provider = null; signer = null; payrollContract = null; usdcContract = null; userAddress = null;
+  if (earnedInterval) { clearInterval(earnedInterval); earnedInterval = null; }
+  $('btn-connect-nav').textContent = 'Connect';
+  $('btn-connect-nav').classList.remove('connected');
+  $('btn-connect-nav').style.display = '';
+  $('btn-disconnect-nav').style.display = 'none';
+  $('btn-deposit').disabled = true;
+  $('btn-add-emp').disabled = true;
+  $('btn-withdraw').disabled = true;
+  $('earned-amount').textContent = '0.000000';
+  $('p-wallet').textContent = '—';
+  $('employee-list').innerHTML = '<div style="text-align:center;color:var(--muted);font-size:0.68rem;padding:24px 0;">Connect wallet to view streams</div>';
+}
+
+// ── Wallet ──
+async function connectWallet() {
+  if (!window.ethereum) { alert('Install Rabby or MetaMask.'); return; }
+  try {
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send('eth_requestAccounts', []);
+    try { await provider.send('wallet_switchEthereumChain', [{ chainId: CHAIN_ID }]); }
+    catch(sw) {
+      if (sw.code === 4902) await provider.send('wallet_addEthereumChain', [{ chainId: CHAIN_ID, chainName: 'Arc Testnet', rpcUrls: [RPC_URL], nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 }, blockExplorerUrls: [EXPLORER] }]);
+    }
+    signer = await provider.getSigner();
+    userAddress = await signer.getAddress();
+    payrollContract = new ethers.Contract(PAYROLL_ADDRESS, PAYROLL_ABI, signer);
+    usdcContract    = new ethers.Contract(USDC_ADDRESS, USDC_ABI, signer);
+    const short = userAddress.slice(0,6)+'...'+userAddress.slice(-4);
+    $('btn-connect-nav').textContent = '✓ ' + short;
+    $('btn-connect-nav').classList.add('connected');
+    $('btn-connect-nav').style.display = 'none';
+    $('btn-disconnect-nav').style.display = '';
+    $('btn-deposit').disabled = false;
+    $('btn-add-emp').disabled = false;
+    $('btn-withdraw').disabled = false;
+    await readPayrollStats(userAddress);
+    startEarnedTracker();
+    loadStreams();
+  } catch(e) { alert('Connection failed: ' + (e.message || e)); }
+}
+
+// ── Stats ──
+async function readPayrollStats(addr) {
+  try {
+    const rp = new ethers.JsonRpcProvider(RPC_URL);
+    const pc = new ethers.Contract(PAYROLL_ADDRESS, PAYROLL_ABI, rp);
+    const uc = new ethers.Contract(USDC_ADDRESS, USDC_ABI, rp);
+    const [bal, cnt] = await Promise.all([pc.contractBalance(), pc.getEmployeeCount()]);
+    const fmt = (v, d=2) => (Number(v)/1e6).toFixed(d);
+    $('p-balance').textContent    = fmt(bal) + ' USDC';
+    $('p-employees').textContent  = cnt.toString();
+    $('home-balance').textContent = fmt(bal) + ' USDC';
+    $('home-employees').textContent = cnt.toString();
+    if (addr) { const wb = await uc.balanceOf(addr); $('p-wallet').textContent = fmt(wb) + ' USDC'; }
+  } catch(e) {}
+}
+
+// ── Payroll tabs ──
+document.querySelectorAll('[data-ptab]').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('[data-ptab]').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    $('ptab-' + tab.dataset.ptab).classList.add('active');
+  });
+});
+
+// ── Deposit ──
+$('btn-deposit').addEventListener('click', async () => {
+  const amount = parseFloat($('deposit-amount').value);
+  if (!amount) { setS('status-deposit','Enter a valid amount.','err'); return; }
+  try {
+    $('btn-deposit').disabled = true;
+    $('btn-deposit').innerHTML = '<span class="spinner"></span>Approving...';
+    setS('status-deposit','Approving USDC...','loading');
+    showToast('pending','Approving USDC...','Confirm in your wallet');
+    const raw = BigInt(Math.floor(amount * 1e6));
+    await (await usdcContract.approve(PAYROLL_ADDRESS, raw)).wait();
+    $('btn-deposit').innerHTML = '<span class="spinner"></span>Depositing...';
+    setS('status-deposit','Depositing...','loading');
+    showToast('pending','Depositing USDC...','Sending to payroll contract');
+    const depTx = await payrollContract.deposit(raw); await depTx.wait();
+    setS('status-deposit','✓ ' + amount + ' USDC deposited!','ok');
+    showToast('success', '✓ ' + amount + ' USDC deposited', 'Payroll contract funded', depTx.hash);
+    $('deposit-amount').value = '';
+    await readPayrollStats(userAddress);
+  } catch(e) {
+    setS('status-deposit','Error: '+(e.reason||e.shortMessage||e.message),'err');
+    showToast('fail','Deposit failed', e.reason||e.shortMessage||e.message||'Transaction rejected');
+  }
+  finally { $('btn-deposit').disabled=false; $('btn-deposit').textContent='Deposit USDC'; }
+});
+
+// ── Add Employee ──
+$('btn-add-emp').addEventListener('click', async () => {
+  const addr = $('emp-address').value.trim(), salary = parseFloat($('emp-salary').value);
+  if (!addr || !salary) { setS('status-add','Fill in all fields.','err'); return; }
+  try {
+    $('btn-add-emp').disabled=true; $('btn-add-emp').innerHTML='<span class="spinner"></span>Adding...';
+    setS('status-add','Sending transaction...','loading');
+    showToast('pending','Adding employee...','Confirm in your wallet');
+    const empTx = await payrollContract.addEmployee(addr, Math.floor(salary)); await empTx.wait();
+    setS('status-add','✓ Employee added! Streaming '+salary+' USDC/month.','ok');
+    showToast('success','Employee added!', salary+' USDC/month streaming', empTx.hash);
+    $('emp-address').value=''; $('emp-salary').value='';
+    await readPayrollStats(userAddress); loadStreams();
+  } catch(e) {
+    setS('status-add','Error: '+(e.reason||e.shortMessage||e.message),'err');
+    showToast('fail','Failed to add employee', e.reason||e.shortMessage||e.message||'Transaction rejected');
+  }
+  finally { $('btn-add-emp').disabled=false; $('btn-add-emp').textContent='Add Employee'; }
+});
+
+// ── Withdraw ──
+$('btn-withdraw').addEventListener('click', async () => {
+  try {
+    $('btn-withdraw').disabled=true; $('btn-withdraw').innerHTML='<span class="spinner"></span>Withdrawing...';
+    setS('status-withdraw','Sending transaction...','loading');
+    showToast('pending','Withdrawing earnings...','Confirm in your wallet');
+    const tx = await payrollContract.withdraw(); await tx.wait();
+    const item = document.createElement('div'); item.className='tx-item';
+    item.innerHTML=`<span>✓ Withdrew earnings</span><a href="${EXPLORER}/tx/${tx.hash}" target="_blank">${tx.hash.slice(0,10)}...↗</a>`;
+    $('tx-log-withdraw').prepend(item);
+    setS('status-withdraw','✓ USDC withdrawn!','ok');
+    showToast('success','✓ Earnings withdrawn!','USDC sent to your wallet', tx.hash);
+    await readPayrollStats(userAddress);
+  } catch(e) {
+    setS('status-withdraw','Error: '+(e.reason||e.shortMessage||e.message),'err');
+    showToast('fail','Withdrawal failed', e.reason||e.shortMessage||e.message||'Transaction rejected');
+  }
+  finally { $('btn-withdraw').disabled=false; $('btn-withdraw').textContent='Withdraw Earnings'; }
+});
+
+// ── Earned tracker ──
+function startEarnedTracker() {
+  if (earnedInterval) clearInterval(earnedInterval);
+  async function update() {
+    try {
+      const rp = new ethers.JsonRpcProvider(RPC_URL);
+      const pc = new ethers.Contract(PAYROLL_ADDRESS, PAYROLL_ABI, rp);
+      const e = await pc.earned(userAddress);
+      $('earned-amount').textContent = (Number(e)/1e6).toFixed(6);
+    } catch {}
+  }
+  update(); earnedInterval = setInterval(update, 3000);
+}
+
+// ── Load streams ──
+async function loadStreams() {
+  const list = $('employee-list');
+  try {
+    const rp = new ethers.JsonRpcProvider(RPC_URL);
+    const pc = new ethers.Contract(PAYROLL_ADDRESS, PAYROLL_ABI, rp);
+    const count = Number(await pc.getEmployeeCount());
+    if (!count) { list.innerHTML='<div style="text-align:center;color:var(--muted);font-size:0.68rem;padding:24px 0;">No employees added yet</div>'; return; }
+    list.innerHTML='';
+    for (let i=0;i<count;i++) {
+      const addr = await pc.employeeList(i);
+      const emp  = await pc.employees(addr);
+      if (!emp.active) continue;
+      const earned = await pc.earned(addr);
+      const rpm = (Number(emp.ratePerSecond)*30*24*3600/1e6).toFixed(2);
+      const el = document.createElement('div'); el.className='employee-item';
+      el.innerHTML=`<div class="employee-addr">${addr}</div><div class="employee-earned">${(Number(earned)/1e6).toFixed(6)} USDC earned</div><div class="employee-rate">~${rpm} USDC/month</div><div class="stream-bar-wrap"><div class="stream-bar"></div></div>`;
+      list.appendChild(el);
+    }
+  } catch { list.innerHTML='<div style="text-align:center;color:var(--muted);font-size:0.68rem;padding:24px 0;">Connect wallet to view streams</div>'; }
+}
+
+// ── Invoice live preview ──
+function updatePreview() {
+  $('prev-number').textContent = $('inv-number').value||'INV-001';
+  $('prev-date').textContent = $('inv-due').value?'Due: '+$('inv-due').value:'Due: —';
+  $('prev-from-name').textContent = $('from-name').value||'Your Name';
+  $('prev-from-wallet').textContent = $('from-wallet').value||'0x...';
+  $('prev-to-name').textContent = $('to-name').value||'Client';
+  $('prev-to-wallet').textContent = $('to-wallet').value||'0x...';
+  $('prev-desc').textContent = $('inv-desc').value||'Service';
+  const a = parseFloat($('inv-amount').value)||0;
+  $('prev-amount-item').textContent = a+' USDC'; $('prev-total').textContent = a;
+  const n=$('inv-notes').value; $('prev-notes').textContent=n; $('prev-notes').style.display=n?'block':'none';
+}
+
+['from-name','from-wallet','to-name','to-wallet','inv-number','inv-due','inv-desc','inv-amount','inv-notes'].forEach(id=>$(id).addEventListener('input',updatePreview));
+
+$('inv-number').value='INV-'+String(Math.floor(Math.random()*900)+100);
+const d=new Date(); d.setDate(d.getDate()+14); $('inv-due').value=d.toISOString().split('T')[0];
+updatePreview();
+
+// ── Generate link ──
+$('btn-generate').addEventListener('click',()=>{
+  const fn=$('from-name').value.trim(), fw=$('from-wallet').value.trim(), amt=parseFloat($('inv-amount').value), desc=$('inv-desc').value.trim();
+  if(!fn||!fw||!amt||!desc){setS('status-gen','Fill in name, wallet, description and amount.','err');return;}
+  if(!fw.startsWith('0x')||fw.length!==42){setS('status-gen','Enter a valid wallet address.','err');return;}
+  const p=new URLSearchParams({pay:'1',from:fn,to:$('to-name').value||'Client',wallet:fw,amount:amt,desc,inv:$('inv-number').value,due:$('inv-due').value,notes:$('inv-notes').value});
+  const link=window.location.origin+window.location.pathname+'?'+p.toString();
+  $('payment-link-url').textContent=link; $('payment-link-box').style.display='block';
+  setS('status-gen','✓ Payment link generated!','ok');
+});
+
+$('btn-copy').addEventListener('click',()=>{ navigator.clipboard.writeText($('payment-link-url').textContent).then(()=>{ $('btn-copy').textContent='✓ Copied!'; setTimeout(()=>$('btn-copy').textContent='Copy Link',2000); }); });
+$('btn-share').addEventListener('click',()=>{ const u=$('payment-link-url').textContent; if(navigator.share){navigator.share({title:'USDC Invoice',url:u});}else{navigator.clipboard.writeText(u);$('btn-share').textContent='✓ Copied!';setTimeout(()=>$('btn-share').textContent='Share',2000);} });
+$('btn-preview').addEventListener('click',()=>{ updatePreview(); document.querySelector('.invoice-preview').scrollIntoView({behavior:'smooth'}); });
+
+// ── Pay param check ──
+function checkPayParam() {
+  const p=new URLSearchParams(window.location.search);
+  if(!p.get('pay')) return;
+  $('pay-view').style.display='block'; $('create-view').style.display='none';
+  const amount=p.get('amount')||'0', wallet=p.get('wallet')||'';
+  $('pay-amount').textContent=amount;
+  const rows=[{k:'Invoice #',v:p.get('inv')||'—'},{k:'From',v:p.get('from')||'—'},{k:'To',v:p.get('to')||'—'},{k:'Description',v:p.get('desc')||'—'},{k:'Due',v:p.get('due')||'—'},{k:'Pay To',v:wallet}];
+  if(p.get('notes')) rows.push({k:'Notes',v:p.get('notes')});
+  $('pay-details').innerHTML=rows.map(r=>`<div class="pay-row"><span class="pay-key">${r.k}</span><span class="pay-val">${r.v}</span></div>`).join('');
+  $('btn-pay-connect').addEventListener('click',async()=>{
+    if(!window.ethereum){alert('Install Rabby or MetaMask.');return;}
+    try {
+      $('btn-pay-connect').innerHTML='<span class="spinner"></span>Connecting...';
+      const prov=new ethers.BrowserProvider(window.ethereum);
+      await prov.send('eth_requestAccounts',[]);
+      try{await prov.send('wallet_switchEthereumChain',[{chainId:CHAIN_ID}]);}catch(sw){if(sw.code===4902)await prov.send('wallet_addEthereumChain',[{chainId:CHAIN_ID,chainName:'Arc Testnet',rpcUrls:[RPC_URL],nativeCurrency:{name:'USDC',symbol:'USDC',decimals:18},blockExplorerUrls:[EXPLORER]}]);}
+      const sg=await prov.getSigner();
+      const uc=new ethers.Contract(USDC_ADDRESS,USDC_ABI,sg);
+      const raw=BigInt(Math.floor(parseFloat(amount)*1e6));
+      $('btn-pay-connect').innerHTML='<span class="spinner"></span>Sending USDC...';
+      setS('pay-status','Confirm in your wallet...','loading');
+      showToast('pending','Sending payment...','Confirm in your wallet');
+      const tx=await uc.transfer(wallet,raw); await tx.wait();
+      setS('pay-status','✓ Payment sent! Tx: '+tx.hash.slice(0,10)+'...','ok');
+      showToast('success','✓ Payment sent!', amount+' USDC transferred', tx.hash);
+      $('btn-pay-connect').textContent='✓ Paid';
+    } catch(e){
+      setS('pay-status','Error: '+(e.reason||e.shortMessage||e.message),'err');
+      showToast('fail','Payment failed', e.reason||e.shortMessage||e.message||'Transaction rejected');
+      $('btn-pay-connect').textContent='Connect & Pay';
+    }
+  });
+}
+
+function clearPayParam() { window.history.replaceState({},'',window.location.pathname); $('pay-view').style.display='none'; $('create-view').style.display='block'; }
+
+// ── Helpers ──
+function setS(id,msg,type=''){const e=$(id);e.textContent=msg;e.className='status '+type;}
+
+// ── Init ──
+$('btn-connect-nav').addEventListener('click',connectWallet);
+$('btn-disconnect-nav').addEventListener('click',disconnectWallet);
+readPayrollStats(null);
+
+// Check if opened with pay param
+const initParams=new URLSearchParams(window.location.search);
+if(initParams.get('pay')){showPage('invoice');}
+</script>
+</body>
+</html>
